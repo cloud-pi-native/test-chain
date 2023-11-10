@@ -1,0 +1,47 @@
+include:
+  - project: $CATALOG_PATH
+    file:
+      - vault-ci.yml
+      - kaniko-ci.yml
+    ref: main
+
+
+stages:          # List of stages for jobs, and their order of execution
+  - read-secret
+  - build
+  - test
+  - deploy
+
+read_secret:
+  stage: read-secret
+  extends:
+    - .vault:read_secret
+
+build-job:      # This job runs in the build stage, which runs first.
+  image: alpine/openssl
+  stage: build
+  script:
+    - set -euo pipefail
+    - echo "Compiling the code..."
+    - export hex=$(openssl rand -hex 3)
+    - sed -i "s/hex/#$hex/" index.html
+    - sed -i "s/date/$(date)/" index.html
+  artifacts:
+    untracked: false
+    when: on_success
+    expire_in: 30 days
+    paths:
+      - index.html
+
+unit-test-job:   # This job runs in the test stage.
+  stage: test    # It only starts when the job in the build stage completes successfully.
+  script:
+    - cat index.html
+    - env | sort
+
+docker-build:
+  stage: deploy
+  variables:
+    IMAGE_NAMES: nginx:latest
+  extends:
+    - .kaniko:build-push
